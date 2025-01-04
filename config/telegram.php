@@ -32,9 +32,9 @@ return [
     */
     'bots' => [
         'DndBDNotifyBot' => [
-            'token' => env('TELEGRAM_BOT_TOKEN', '7951958405:AAEEISseWG0WqBDpcu0stYRCP0sn6c06-Qo'),
+            'token' => env('TELEGRAM_BOT_TOKEN'),
             //'certificate_path' => env('TELEGRAM_CERTIFICATE_PATH', 'YOUR-CERTIFICATE-PATH'),
-            'webhook_url' => env('TELEGRAM_WEBHOOK_URL', 'https://hideously-brief-dory.ngrok-free.app/'),
+            'webhook_url' => env('TELEGRAM_WEBHOOK_URL'),
             /*
              * @see https://core.telegram.org/bots/api#update
              */
