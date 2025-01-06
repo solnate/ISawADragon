@@ -34,7 +34,7 @@ return [
         'DndBDNotifyBot' => [
             'token' => env('TELEGRAM_BOT_TOKEN'),
             //'certificate_path' => env('TELEGRAM_CERTIFICATE_PATH', 'YOUR-CERTIFICATE-PATH'),
-            'webhook_url' => env('TELEGRAM_WEBHOOK_URL'),
+            //'webhook_url' => env('TELEGRAM_WEBHOOK_URL'),
             /*
              * @see https://core.telegram.org/bots/api#update
              */

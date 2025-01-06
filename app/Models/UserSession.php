@@ -4,8 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Dates extends Model
+class UserSession extends Model
 {
-    protected $table = 'dates';
+    protected $table = 'user_sessions';
     protected $guarded = false;
 }

@@ -11,11 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('dates', function (Blueprint $table) {
+        Schema::create('user_sessions', function (Blueprint $table) {
             $table->id();
-            $table->date('date');
-            $table->time('time');
-            $table->string('description');
+            $table->bigInteger('user_id')->unique();
+            $table->string('state')->nullable();
             $table->timestamps();
         });
     }
@@ -25,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('dates');
+        Schema::dropIfExists('user_sessions');
     }
 };
