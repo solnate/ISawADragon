@@ -12,7 +12,11 @@ use Telegram\Bot\Keyboard\Keyboard;
 
 class BotController extends Controller
 {
-    protected $telegram;
+    protected Api $telegram;
+    protected UserSession $user;
+    protected array $data;
+    protected int $chat_id;
+    protected Keyboard $menuKeyboard;
 
     /**
      * Create a new controller instance.
@@ -22,6 +26,7 @@ class BotController extends Controller
     public function __construct(Api $telegram)
     {
         $this->telegram = $telegram;
+        $this->menuKeyboard = self::getMenu();
     }
 
     /**
@@ -39,53 +44,46 @@ class BotController extends Controller
             'parse_mode' => 'HTML'
         ]);
     }
-
     public function notify(Request $request)
     {
-        $data = $request->all();
-        $user_id = (int)data_get($data, 'message.from.id');
+        $this->data = $request->all();
+        $user_id = (int)data_get($this->data, 'message.from.id');
+        $this->chat_id = (int)data_get($this->data, 'message.chat.id');
 
-        $user = UserSession::where('user_id', $user_id)->first();
-        if (!$user) return;
-        switch ($user->state) {
-            case UserSession::statuses['command']:
-                $this->commands($data, $user);
+        $this->user = UserSession::where('user_id', $user_id)->first();
+        if (!$this->user) return;
+        switch ($this->user->state) {
+            case UserSession::status['menu']:
+                $this->menu();
                 break;
-            case UserSession::statuses['create']:
-                $this->create($data, $user_id, $user);
+            case UserSession::status['creating']:
+                $this->create($user_id);
                 break;
-            case UserSession::statuses['delete']:
-                if(data_get($data, 'message.text') === 'Назад в меню') {
-                    $this->SetCommandStatus($user, $data);
-                }
-                else{
-                    $this->delete($data, $user);
-                    $this->SetDeleteStatus($user, $data);
-                }
+            case UserSession::status['deleting']:
+                if(data_get($this->data, 'message.text') === 'Назад в меню')
+                    $this->SetMenuStatus();
+                else
+                    $this->delete();
                 break;
         }
     }
-
-    public function commands(array $data, UserSession $user): void
+    public function menu(): void
     {
-        switch (data_get($data, 'message.text')) {
+        switch (data_get($this->data, 'message.text')) {
             case 'Посмотреть напоминания':
-                $this->read($data);
+                $this->read();
                 break;
             case 'Создать напоминание':
-                $user->state = UserSession::statuses['create'];
-                $user->save();
-                $this->sendMessage(data_get($data, 'message.chat.id'), 'Теперь пришли дату и описание');
+                $this->setCreatingStatus();
                 break;
             case 'Удалить напоминание':
-                $this->SetDeleteStatus($user, $data);
+                $this->SetDeletingOrMenuStatus();
                 break;
         }
     }
-
-    public function create(array $data, int $user_id, UserSession $user): void
+    public function create(int $user_id): void
     {
-        $content = Helper::getDate(data_get($data, 'message.text'));
+        $content = Helper::getDate(data_get($this->data, 'message.text'));
         if ($content) {
             Notify::create([
                 'user_id' => $user_id,
@@ -94,53 +92,55 @@ class BotController extends Controller
             ]);
 
             $this->telegram->sendMessage([
-                'chat_id' => data_get($data, 'message.chat.id'),
+                'chat_id' => $this->chat_id,
                 'text' => 'Добавлено',
                 'parse_mode' => 'HTML'
             ]);
 
-            $this->read($data);
-
-            $this->SetCommandStatus($user, $data);
-        } else {
+            $this->read();
+        }
+        else {
             $this->telegram->sendMessage([
-                'chat_id' => data_get($data, 'message.chat.id'),
+                'chat_id' => $this->chat_id,
                 'text' => 'Неправильный формат',
                 'parse_mode' => 'HTML'
             ]);
         }
     }
-
-    public function delete(array $data, UserSession $user): void
+    public function read(): void
     {
-        $id = strstr(data_get($data, 'message.text'), '.', true);
+        $notifies = Notify::all();
+        if ($notifies->isNotEmpty()) {
+            $message = '';
+            foreach ($notifies as $notify) {
+                $message .= $notify->id . '. ' . $notify->date . ' -> ' . $notify->description . PHP_EOL;
+            }
+            $this->sendMessage($this->chat_id, $message);
+        }
+
+        $this->SetMenuStatus();
+    }
+    public function delete(): void
+    {
+        $id = strstr(data_get($this->data, 'message.text'), '.', true);
         $notify = Notify::find($id);
         if($notify) {
             $notify->delete();
             $this->telegram->sendMessage([
-                'chat_id' => data_get($data, 'message.chat.id'),
+                'chat_id' => $this->chat_id,
                 'text' => 'Удалено',
                 'parse_mode' => 'HTML'
             ]);
         }
         else
             $this->telegram->sendMessage([
-                'chat_id' => data_get($data, 'message.chat.id'),
+                'chat_id' => $this->chat_id,
                 'text' => 'Ошибка удаления',
                 'parse_mode' => 'HTML'
             ]);
-    }
-    public function read(array $data): void
-    {
-        $message = '';
-        $notifies = Notify::all();
-        foreach ($notifies as $notify) {
-            $message .= $notify->id . '. ' . $notify->date . ' -> ' . $notify->description . PHP_EOL;
-        }
-        if(empty($message)) $message = 'Ничего не найдено';
-        $this->sendMessage(data_get($data, 'message.chat.id'), $message);
-    }
 
+        $this->SetDeletingOrMenuStatus();
+    }
     public function getNotifiesKeyboard()
     {
         $notifies = Notify::all();
@@ -162,7 +162,6 @@ class BotController extends Controller
         else
             return null;
     }
-
     public static function getMenu()
     {
         return Keyboard::make()
@@ -178,37 +177,45 @@ class BotController extends Controller
                 Keyboard::button('Удалить напоминание'),
             ]);
     }
-    public function SetCommandStatus($user, array $data): void
+    public function SetMenuStatus(): void
     {
-        $user->state = UserSession::statuses['command'];
-        $user->save();
+        $this->user->state = UserSession::status['menu'];
+        $this->user->save();
         $this->telegram->sendMessage([
-            'chat_id' => data_get($data, 'message.chat.id'),
+            'chat_id' => $this->chat_id,
             'text' => 'Меню',
             'parse_mode' => 'HTML',
-            'reply_markup' => BotController::getMenu()
+            'reply_markup' => $this->menuKeyboard
         ]);
     }
-    public function SetDeleteStatus($user, array $data): void
+    public function setCreatingStatus(): void
+    {
+        $this->user->state = UserSession::status['creating'];
+        $this->user->save();
+
+        $this->sendMessage($this->chat_id, 'Теперь пришли дату и описание');
+    }
+    public function SetDeletingOrMenuStatus(): void
     {
         $notifiesKeyboard = $this->getNotifiesKeyboard();
         if ($notifiesKeyboard) {
-            $user->state = UserSession::statuses['delete'];
-            $user->save();
+            $this->user->state = UserSession::status['deleting'];
+            $this->user->save();
             $this->telegram->sendMessage([
-                'chat_id' => data_get($data, 'message.chat.id'),
+                'chat_id' => $this->chat_id,
                 'text' => 'Выбери напоминание для удаления',
                 'parse_mode' => 'HTML',
                 'reply_markup' => $this->getNotifiesKeyboard()
             ]);
-        } else {
+        }
+        else {
             $this->telegram->sendMessage([
-                'chat_id' => data_get($data, 'message.chat.id'),
+                'chat_id' => $this->chat_id,
                 'text' => 'Ничего не найдено',
                 'parse_mode' => 'HTML'
             ]);
 
-            $this->SetCommandStatus($user, $data);
+            $this->SetMenuStatus();
         }
     }
 }

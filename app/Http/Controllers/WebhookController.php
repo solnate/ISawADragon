@@ -2,9 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Helpers\Helper;
-use App\Models\Notify;
-use App\Models\UserSession;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Telegram\Bot\Api;
