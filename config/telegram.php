@@ -41,7 +41,6 @@ return [
             'allowed_updates' => null,
             'commands' => [
                 \App\Commands\StartCommand::class,
-                \App\Commands\DateAddCommand::class,
                 //Acme\Project\Commands\MyTelegramBot\BotCommand::class
             ],
         ],
