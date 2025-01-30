@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Commands;
+namespace App\Telegram\DndBDNotify\Commands;
 
-use App\Http\Controllers\BotController;
 use App\Models\UserSession;
+use App\Telegram\DndBDNotify\DndBDNotifyBot;
 use Telegram\Bot\Commands\Command;
 
-class StartCommand extends Command
+class MenuCommand extends Command
 {
-    protected string $name = 'start';
-    protected string $description = 'Start a new bot';
+    protected string $name = 'menu';
+    protected string $description = 'Show menu';
     /**
      * @inheritDoc
      */
@@ -22,11 +22,10 @@ class StartCommand extends Command
         );
         $user->state = 'awaiting_command';
         $user->save();
-
         $this->replyWithMessage([
             'text' => 'Меню',
             'parse_mode' => 'HTML',
-            'reply_markup' => BotController::getMenu()
+            'reply_markup' => DndBDNotifyBot::getMenu()
         ]);
     }
 }

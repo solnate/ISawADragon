@@ -3,16 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\Helper;
-use App\Http\Controllers\Controller;
 use App\Models\Notify;
 use App\Models\UserSession;
 use Illuminate\Http\Request;
 use Telegram\Bot\Api;
+use Telegram\Bot\Commands\Command;
 use Telegram\Bot\Keyboard\Keyboard;
+use Telegram\Bot\Laravel\Facades\Telegram;
 
 class BotController extends Controller
 {
-    protected Api $telegram;
     protected UserSession $user;
     protected array $data;
     protected int $chat_id;
@@ -23,9 +23,8 @@ class BotController extends Controller
      *
      * @param  Api  $telegram
      */
-    public function __construct(Api $telegram)
+    public function __construct(protected Api $telegram)
     {
-        $this->telegram = $telegram;
         $this->menuKeyboard = self::getMenu();
     }
 
@@ -52,12 +51,19 @@ class BotController extends Controller
 
         $this->user = UserSession::where('user_id', $user_id)->first();
         if (!$this->user) return;
+
         switch ($this->user->state) {
             case UserSession::status['menu']:
                 $this->menu();
                 break;
             case UserSession::status['creating']:
                 $this->create($user_id);
+                break;
+            case UserSession::status['reading']:
+                if(data_get($this->data, 'message.text') === 'Назад в меню')
+                    $this->SetMenuStatus();
+                else
+                    $this->showNotify();
                 break;
             case UserSession::status['deleting']:
                 if(data_get($this->data, 'message.text') === 'Назад в меню')
@@ -71,7 +77,7 @@ class BotController extends Controller
     {
         switch (data_get($this->data, 'message.text')) {
             case 'Посмотреть напоминания':
-                $this->read();
+                $this->setReadingStatus();
                 break;
             case 'Создать напоминание':
                 $this->setCreatingStatus();
@@ -141,42 +147,6 @@ class BotController extends Controller
 
         $this->SetDeletingOrMenuStatus();
     }
-    public function getNotifiesKeyboard()
-    {
-        $notifies = Notify::all();
-        if($notifies->isNotEmpty()) {
-            $reply_markup = Keyboard::make()
-                ->setResizeKeyboard(true)
-                ->setOneTimeKeyboard(true);
-            foreach ($notifies as $notify) {
-                $message = $notify->id . '. ' . $notify->date . ' -> ' . $notify->description . PHP_EOL;
-                $reply_markup->row([
-                    Keyboard::button($message),
-                ]);
-            }
-            $reply_markup->row([
-                Keyboard::button('Назад в меню'),
-            ]);
-            return $reply_markup;
-        }
-        else
-            return null;
-    }
-    public static function getMenu()
-    {
-        return Keyboard::make()
-            ->setResizeKeyboard(true)
-            ->setOneTimeKeyboard(true)
-            ->row([
-                Keyboard::button('Создать напоминание'),
-            ])
-            ->row([
-                Keyboard::button('Посмотреть напоминания'),
-            ])
-            ->row([
-                Keyboard::button('Удалить напоминание'),
-            ]);
-    }
     public function SetMenuStatus(): void
     {
         $this->user->state = UserSession::status['menu'];
@@ -193,7 +163,30 @@ class BotController extends Controller
         $this->user->state = UserSession::status['creating'];
         $this->user->save();
 
-        $this->sendMessage($this->chat_id, 'Теперь пришли дату и описание');
+        $this->sendMessage($this->chat_id, 'Теперь пришли дату (d.m.Y) и описание');
+    }
+    public function setReadingStatus(): void
+    {
+        $notifiesKeyboard = $this->getNotifiesKeyboard();
+        if ($notifiesKeyboard) {
+            $this->user->state = UserSession::status['reading'];
+            $this->user->save();
+            $this->telegram->sendMessage([
+                'chat_id' => $this->chat_id,
+                'text' => 'Напоминания:',
+                'parse_mode' => 'HTML',
+                'reply_markup' => $this->getNotifiesKeyboard()
+            ]);
+        }
+        else {
+            $this->telegram->sendMessage([
+                'chat_id' => $this->chat_id,
+                'text' => 'Ничего не найдено',
+                'parse_mode' => 'HTML'
+            ]);
+
+            $this->SetMenuStatus();
+        }
     }
     public function SetDeletingOrMenuStatus(): void
     {
@@ -217,5 +210,59 @@ class BotController extends Controller
 
             $this->SetMenuStatus();
         }
+    }
+    public function showNotify()
+    {
+        $id = strstr(data_get($this->data, 'message.text'), '.', true);
+        $notify = Notify::find($id);
+        if($notify) {
+            $message = $notify->id . '. ' . $notify->date . ' -> ' . $notify->description;
+            $this->telegram->sendMessage([
+                'chat_id' => $this->chat_id,
+                'text' => $message,
+                'parse_mode' => 'HTML'
+            ]);
+        }
+        else
+            $this->telegram->sendMessage([
+                'chat_id' => $this->chat_id,
+                'text' => 'Ошибка',
+                'parse_mode' => 'HTML'
+            ]);
+    }
+    public function getNotifiesKeyboard()
+    {
+        $notifies = Notify::all();
+        if($notifies->isNotEmpty()) {
+            $reply_markup = Keyboard::make()
+                ->setResizeKeyboard(true)
+                ->setOneTimeKeyboard(true);
+
+            $buttons = [];
+            foreach ($notifies as $notify) {
+                $message = $notify->id . '. ' . $notify->date;
+                $buttons[] = Keyboard::button($message);
+            }
+            foreach (array_chunk($buttons, 4) as $row) {
+                $reply_markup->row($row);
+            }
+            $reply_markup->row([
+                Keyboard::button('Назад в меню'),
+            ]);
+
+            return $reply_markup;
+        }
+        else
+            return null;
+    }
+    public static function getMenu()
+    {
+        return Keyboard::make()
+            //->setResizeKeyboard(true)
+            //->setOneTimeKeyboard(true)
+            ->inline()
+            ->row([
+                Keyboard::inlineButton(['text' => 'Создать напоминание', 'callback_data' => 'data'])
+            ]);
     }
 }

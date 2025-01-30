@@ -19,7 +19,3 @@ Route::get('/bot/{name}', function ($name) {
         ['url' => config('app.url') . config('telegram.bots.' . $name . '.token') . '/webhook']
     );
 });
-
-Route::get('/test', function () {
-    return env('REDIS_CLIENT');
-});

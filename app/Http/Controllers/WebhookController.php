@@ -2,23 +2,40 @@
 
 namespace App\Http\Controllers;
 
+use App\Telegram\DndBDNotify\DndBDNotifyBot;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Telegram\Bot\Api;
+use Telegram\Bot\Exceptions\TelegramSDKException;
 use Telegram\Bot\Laravel\Facades\Telegram;
 
 class WebhookController extends Controller
 {
     public function handle(Request $request, string $token) : Response
     {
-        $api = new Api($token);
-        $controller = new BotController($api);
-        $bot = $controller->show();
+        try {
+            $api = new Api($token);
+            $botData = $api->getMe();
 
-        if($bot->username === 'DndBDNotifyBot')
-            $controller->notify($request);
+            if($botData->username === 'DndBDNotifyBot') {
+                $bot = Telegram::bot($botData->username);
+                $updates = $bot->getWebhookUpdate();
+                $message = $updates->getMessage();
 
-        $update = Telegram::bot($bot->username)->commandsHandler(true);
-        return response($update,200);
+                if ($message && str_starts_with($message->getText(), '/')) {
+                    $bot->commandsHandler(true);
+                }
+                else {
+                    $botController = new DndBDNotifyBot($bot);
+                    return response($botController->handle($updates),200);
+                }
+
+                return response($message,200);
+            }
+
+            return response('Not Handled',200);
+        } catch (TelegramSDKException $e) {
+            return response($e,502);
+        }
     }
 }

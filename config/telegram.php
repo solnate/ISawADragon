@@ -40,8 +40,8 @@ return [
              */
             'allowed_updates' => null,
             'commands' => [
-                \App\Commands\StartCommand::class,
-                //Acme\Project\Commands\MyTelegramBot\BotCommand::class
+                \App\Telegram\DndBDNotify\Commands\MenuCommand::class,
+                \App\Telegram\DndBDNotify\Commands\R20Command::class,
             ],
         ],
 

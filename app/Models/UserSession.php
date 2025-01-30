@@ -8,6 +8,7 @@ class UserSession extends Model
 {
     const status = [
         'creating' => 'awaiting_date',
+        'reading' => 'reading',
         'deleting' => 'deleting',
         'menu' => 'awaiting_command',
     ];
